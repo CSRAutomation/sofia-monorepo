@@ -1,0 +1,20 @@
+# Archivos compilados de Python
+__pycache__
+__pycache__/
+*.pyo
+*.pyc
+
+# Entornos Virtuales
+# Cubre los nombres más comunes como 'venv', '.venv', 'env', etc.
+# La barra inicial (/) asegura que solo se ignore en la raíz del proyecto.
+.venv
+/venv/
+/.venv/
+*.venv
+
+# Archivos de variables de entorno
+# Es una buena práctica versionar un archivo de ejemplo.
+.env
+/.env
+/.env.*
+!/.env.example
