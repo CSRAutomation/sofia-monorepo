@@ -88,7 +88,6 @@ def get_salesforce_connection():
             logging.error(f"Error inesperado durante la conexión: {e}")
             raise
     return sf_connection
-
 def _escape_soql_str(value: str) -> str:
     """
     Escapa una cadena de texto para su uso seguro en una consulta SOQL.

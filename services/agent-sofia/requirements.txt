@@ -1,0 +1,14 @@
+google-cloud-aiplatform[adk,agent_engines]
+google-genai
+pydantic
+python-dotenv
+pytest-asyncio
+google-adk
+simple-salesforce
+flask
+requests
+dateparser
+google-auth
+PyJWT
+cryptography
+google-cloud-texttospeech
