@@ -3,6 +3,7 @@ import sys
 from flask import Flask, request, jsonify
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+from twilio.twiml.messaging_response import MessagingResponse
 import logging
 
 # Configurar logging
@@ -34,13 +35,10 @@ def get_twilio_client():
     """
     global twilio_client
     if twilio_client is None:
-        app.logger.info("Estableciendo nueva conexión con Twilio...")
-        try:
-            twilio_client = Client(ACCOUNT_SID, AUTH_TOKEN)
-            app.logger.info("¡Conexión con Twilio exitosa!")
-        except Exception as e:
-            app.logger.error(f"Error inesperado durante la conexión a Twilio: {e}")
-            raise
+        app.logger.info("Inicializando cliente de Twilio...")
+        # La inicialización del cliente puede lanzar una excepción si las credenciales son inválidas.
+        twilio_client = Client(ACCOUNT_SID, AUTH_TOKEN)
+        app.logger.info("¡Cliente de Twilio inicializado con éxito!")
     return twilio_client
 
 @app.route('/sms/send', methods=['POST'])
@@ -50,16 +48,21 @@ def send_sms():
 
     data = request.json
     to_number = data.get('to')
-    body = data.get('body')
+    original_body = data.get('body')
 
-    if not all([to_number, body]):
-        return jsonify({"status": "error", "message": "Se requieren los campos 'to' y 'body'."}), 400
+    if not to_number:
+        return jsonify({"status": "error", "message": "El campo 'to' es requerido."}), 400
+    if not original_body:
+        return jsonify({"status": "error", "message": "El campo 'body' es requerido."}), 400
+
+    # Añadimos un texto de confirmación al cuerpo del mensaje original
+    body_with_confirmation = f"{original_body} -- Enviado desde la API."
 
     try:
         message = client.messages.create(
             to=to_number,
             from_=TWILIO_PHONE_NUMBER,
-            body=body)
+            body=body_with_confirmation)
         app.logger.info(f"SMS enviado con éxito. SID: {message.sid}")
         return jsonify({"status": "success", "sid": message.sid}), 200
     except TwilioRestException as e:
@@ -71,6 +74,25 @@ def send_sms():
         app.logger.error(f"Error inesperado al enviar SMS: {e}")
         return jsonify({"status": "error", "message": "Ocurrió un error inesperado en el servidor."}), 500
 
+@app.route('/sms/receive', methods=['POST'])
+def receive_sms():
+    """
+    Endpoint para recibir mensajes SMS entrantes de Twilio (Webhook).
+    Responde automáticamente con un mensaje de confirmación usando TwiML.
+    """
+    # Extraer el cuerpo del mensaje y el número del remitente
+    body = request.values.get('Body', None)
+    from_number = request.values.get('From', None)
+
+    app.logger.info(f"Mensaje recibido de {from_number}: '{body}'")
+
+    # Crear una respuesta TwiML para enviar un SMS de vuelta
+    response = MessagingResponse()
+    response.message("Mensaje recibido. Esta es una respuesta automática desde la API.")
+
+    return str(response), 200, {'Content-Type': 'application/xml'}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # El modo debug no debe usarse en producción. Es mejor controlarlo con una variable de entorno.
+    app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1"))
