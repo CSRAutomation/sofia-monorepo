@@ -7,9 +7,7 @@ import sys
 import threading
 import re
 import logging
-
 # Configurar logging
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Lógica de Carga de Secretos desde Variables de Entorno ---

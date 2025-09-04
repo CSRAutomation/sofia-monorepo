@@ -42,7 +42,7 @@ steps:
     fi
 
     gcloud run deploy ${_SERVICE_NAME}-service \
-      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-service/${_SERVICE_NAME}:latest \
       --platform=managed \
       --region=us-central1 \
       --no-allow-unauthenticated \
@@ -50,7 +50,7 @@ steps:
 
 # Especifica la imagen que se acaba de construir.
 images:
-- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest'
+- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-service/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
