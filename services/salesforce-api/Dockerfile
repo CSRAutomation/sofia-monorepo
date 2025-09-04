@@ -1,6 +1,7 @@
 # Usar una imagen base oficial de Python, ligera y segura.
 FROM python:3.12-slim
 
+
 # Establecer variables de entorno para Python que mejoran el rendimiento en contenedores.
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
