@@ -63,22 +63,20 @@ def send_sms():
 
     data = request.json
     to_number = data.get('to')
-    original_body = data.get('body')
 
     if not to_number:
         return jsonify({"status": "error", "message": "El campo 'to' es requerido."}), 400
-    if not original_body:
-        return jsonify({"status": "error", "message": "El campo 'body' es requerido."}), 400
 
-    # Añadimos un texto de confirmación al cuerpo del mensaje original
-    body_with_confirmation = f"{original_body} -- Enviado desde la API."
+    # Se define un mensaje predeterminado para la prueba de comunicación.
+    # El cuerpo del mensaje ('body') ya no se necesita en la petición JSON.
+    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
 
     try:
         message = client.messages.create(
             to=to_number,
             from_=TWILIO_PHONE_NUMBER,
-            body=body_with_confirmation)
-        app.logger.info(f"SMS enviado con éxito. SID: {message.sid}")
+            body=test_message_body)
+        app.logger.info(f"SMS de prueba enviado con éxito. SID: {message.sid}")
         return jsonify({"status": "success", "sid": message.sid}), 200
     except TwilioRestException as e:
         # Captura errores específicos de la API de Twilio para dar una respuesta más útil.
@@ -93,18 +91,40 @@ def send_sms():
 def receive_sms():
     """
     Endpoint para recibir mensajes SMS entrantes de Twilio (Webhook).
-    Responde automáticamente con un mensaje de confirmación usando TwiML.
+    Al recibir un mensaje, envía un mensaje de prueba predeterminado
+    de vuelta al remitente usando la API REST.
     """
     # Extraer el cuerpo del mensaje y el número del remitente
-    body = request.values.get('Body', None)
+    incoming_body = request.values.get('Body', None)
     from_number = request.values.get('From', None)
 
-    app.logger.info(f"Mensaje recibido de {from_number}: '{body}'")
+    app.logger.info(f"Mensaje recibido de {from_number}: '{incoming_body}'")
 
-    # Crear una respuesta TwiML para enviar un SMS de vuelta
+    if not from_number:
+        app.logger.error("No se pudo obtener el 'From' number del webhook de Twilio.")
+        # Devolvemos una respuesta vacía para que Twilio no intente reenviar el webhook.
+        return str(MessagingResponse()), 200
+
+    # Obtener el cliente de Twilio y definir el mensaje de prueba
+    client = get_twilio_client()
+    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
+
+    try:
+        # Enviar el mensaje de prueba de vuelta al remitente
+        message = client.messages.create(
+            to=from_number,
+            from_=TWILIO_PHONE_NUMBER,
+            body=test_message_body
+        )
+        app.logger.info(f"SMS de prueba de respuesta enviado a {from_number}. SID: {message.sid}")
+    except TwilioRestException as e:
+        app.logger.error(f"Error de la API de Twilio al responder: {e.msg} (Código: {e.code})")
+    except Exception as e:
+        app.logger.error(f"Error inesperado al enviar SMS de respuesta: {e}")
+
+    # Twilio espera una respuesta TwiML. Devolvemos una vacía para indicar que
+    # hemos procesado la solicitud y no queremos que Twilio envíe otra respuesta.
     response = MessagingResponse()
-    response.message("Mensaje recibido. Esta es una respuesta automática desde la API.")
-
     return str(response), 200, {'Content-Type': 'application/xml'}
 
 if __name__ == "__main__":
