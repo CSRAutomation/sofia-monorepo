@@ -91,8 +91,7 @@ def send_sms():
 def receive_sms():
     """
     Endpoint para recibir mensajes SMS entrantes de Twilio (Webhook).
-    Al recibir un mensaje, envía un mensaje de prueba predeterminado
-    de vuelta al remitente usando la API REST.
+    Responde automáticamente con un mensaje de prueba usando TwiML.
     """
     # Extraer el cuerpo del mensaje y el número del remitente
     incoming_body = request.values.get('Body', None)
@@ -100,31 +99,13 @@ def receive_sms():
 
     app.logger.info(f"Mensaje recibido de {from_number}: '{incoming_body}'")
 
-    if not from_number:
-        app.logger.error("No se pudo obtener el 'From' number del webhook de Twilio.")
-        # Devolvemos una respuesta vacía para que Twilio no intente reenviar el webhook.
-        return str(MessagingResponse()), 200
-
-    # Obtener el cliente de Twilio y definir el mensaje de prueba
-    client = get_twilio_client()
-    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
-
-    try:
-        # Enviar el mensaje de prueba de vuelta al remitente
-        message = client.messages.create(
-            to=from_number,
-            from_=TWILIO_PHONE_NUMBER,
-            body=test_message_body
-        )
-        app.logger.info(f"SMS de prueba de respuesta enviado a {from_number}. SID: {message.sid}")
-    except TwilioRestException as e:
-        app.logger.error(f"Error de la API de Twilio al responder: {e.msg} (Código: {e.code})")
-    except Exception as e:
-        app.logger.error(f"Error inesperado al enviar SMS de respuesta: {e}")
-
-    # Twilio espera una respuesta TwiML. Devolvemos una vacía para indicar que
-    # hemos procesado la solicitud y no queremos que Twilio envíe otra respuesta.
+    # Crear una respuesta TwiML para enviar el mensaje de prueba de vuelta.
+    # Este es el método estándar y más eficiente para responder a un SMS.
     response = MessagingResponse()
+    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
+    response.message(test_message_body)
+
+    # Devolver la respuesta TwiML a Twilio. Twilio se encargará de enviar el SMS.
     return str(response), 200, {'Content-Type': 'application/xml'}
 
 if __name__ == "__main__":
