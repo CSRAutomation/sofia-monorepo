@@ -304,6 +304,7 @@ class SalesforceToolset(BaseToolset):
     Un toolset para interactuar con la API de Salesforce.
     """
     def __init__(self, prefix: str = "salesforce_"):
+        super().__init__()
         self.prefix = prefix
 
         def _find_wrapper(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:

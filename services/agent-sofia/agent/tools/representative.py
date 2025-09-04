@@ -65,6 +65,7 @@ class RepresentativeToolset(BaseToolset):
     """
 
     def __init__(self, prefix: str = "representative_"):
+        super().__init__()
         self.prefix = prefix
 
         def _name_wrapper(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
