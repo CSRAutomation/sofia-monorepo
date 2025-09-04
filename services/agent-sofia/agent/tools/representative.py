@@ -52,10 +52,10 @@ def reset_search(tool_context: ToolContext) -> Dict[str, Any]:
     """
     tool_context.state[State.Case.CLIENT_SEARCH_ATTEMPTED] = False
     # También limpiamos el nombre anterior para evitar confusiones
-    tool_context.state[State.Personal.FULL_NAME] = None
-    tool_context.state[State.Personal.FIRST_NAME] = None
-    tool_context.state[State.Personal.LAST_NAME] = None
-    tool_context.state[State.Personal.NAME_GATHERED] = False
+    tool_context.state[State.Customer.FULL_NAME] = None
+    tool_context.state[State.Customer.FIRST_NAME] = None
+    tool_context.state[State.Customer.LAST_NAME] = None
+    tool_context.state[State.Customer.NAME_GATHERED] = False
     return {"status": "success", "message": "Indicador de búsqueda reiniciado."}
 
 

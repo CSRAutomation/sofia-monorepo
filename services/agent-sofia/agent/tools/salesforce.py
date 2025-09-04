@@ -10,7 +10,7 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from .states import State
 
 logger = logging.getLogger(__name__)
-API_BASE_URL = os.getenv("API_CONECCITION_SALESFORCE")  # Carga desde variable de entorno con un valor por defecto
+API_BASE_URL = os.getenv("SALESFORCE_API_URL")  # Carga desde variable de entorno
 
 
 def find_contact_by_name(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
