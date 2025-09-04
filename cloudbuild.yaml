@@ -1,10 +1,20 @@
 steps:
+# 0. Crear el repositorio en Artifact Registry si no existe.
+# Esto hace que el pipeline sea idempotente y no requiera configuración manual.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    gcloud artifacts repositories describe ${_SERVICE_NAME}-service --location=us-central1 || \
+    gcloud artifacts repositories create ${_SERVICE_NAME}-service --repository-format=docker --location=us-central1 --description="Repo para el servicio ${_SERVICE_NAME}"
+
 # 1. Construir la imagen de Docker para el servicio especificado.
 # El nombre del servicio se pasa a través de la variable de sustitución _SERVICE_NAME.
 - name: 'gcr.io/cloud-builders/docker'
   args: [
     'build',
-    '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest',
+    '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-service/${_SERVICE_NAME}:latest',
     # El -f especifica la ruta al Dockerfile del servicio.
     '-f', 'services/${_SERVICE_NAME}/Dockerfile',
     # El contexto del build es la raíz del monorepo, para poder acceder a libs/ en el futuro.
@@ -13,26 +23,30 @@ steps:
 
 # 2. Subir la imagen a Artifact Registry.
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest']
+  args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-service/${_SERVICE_NAME}:latest']
 
 # 3. Desplegar la nueva imagen en Cloud Run.
 # El nombre del servicio de Cloud Run se construye a partir de _SERVICE_NAME.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  entrypoint: gcloud
+  entrypoint: 'bash'
   args:
-  - 'run'
-  - 'deploy'
-  - '${_SERVICE_NAME}-service' # El nombre del servicio en Cloud Run
-  - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest'
-  - '--platform=managed'
-  - '--region=us-central1'
-  - '--no-allow-unauthenticated'
-  # Inyectar secretos. Por ahora, estos son específicos para salesforce-api.
-  # Más adelante se pueden hacer dinámicos si es necesario.
-  - '--set-secrets=SF_USERNAME=sf-prod-username:latest'
-  - '--set-secrets=SF_CONSUMER_KEY=sf-prod-consumer-key:latest'
-  - '--set-secrets=SF_DOMAIN=sf-prod-domain:latest'
-  - '--set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest'
+  - '-c'
+  - |
+    SECRET_ARGS=""
+    if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
+      echo "Servicio salesforce-api detectado. Añadiendo secretos de Salesforce."
+      SECRET_ARGS="--set-secrets=SF_USERNAME=sf-prod-username:latest \
+                   --set-secrets=SF_CONSUMER_KEY=sf-prod-consumer-key:latest \
+                   --set-secrets=SF_DOMAIN=sf-prod-domain:latest \
+                   --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
+    fi
+
+    gcloud run deploy ${_SERVICE_NAME}-service \
+      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      --platform=managed \
+      --region=us-central1 \
+      --no-allow-unauthenticated \
+      $$SECRET_ARGS
 
 # Especifica la imagen que se acaba de construir.
 images:
