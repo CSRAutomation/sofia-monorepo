@@ -40,18 +40,24 @@ steps:
                    --set-secrets=SF_DOMAIN=sf-prod-domain:latest \
                    --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
     elif [ "$_SERVICE_NAME" == "twilio-api" ]; then
-      echo "Servicio twilio-api detectado. Añadiendo secretos de Twilio."
+      echo "Servicio twilio-api detectado. Añadiendo secretos y URL del agente."
       DEPLOY_ARGS="--set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                    --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                    --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest"
+      # Obtenemos dinámicamente la URL del servicio del agente Sofía.
+      AGENT_URL=$$(gcloud run services describe agent-sofia-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      if [ -z "$$AGENT_URL" ]; then
+        echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-service'."
+        exit 1
+      fi
+      echo "URL de Agent API encontrada: $$AGENT_URL"
+      DEPLOY_ARGS="$$DEPLOY_ARGS --set-env-vars=AGENT_API_URL=$$AGENT_URL"
     elif [ "$_SERVICE_NAME" == "agent-sofia" ]; then
       echo "Servicio agent-sofia detectado. Configurando URL de la API de Salesforce."
       # Obtenemos dinámicamente la URL del servicio de la API de Salesforce.
-      # Esto asume que el servicio 'salesforce-api-service' ya está desplegado.
-      SALESFORCE_URL=$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
-      if [ -z "$SALESFORCE_URL" ]; then
+      SALESFORCE_URL=$$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      if [ -z "$$SALESFORCE_URL" ]; then
         echo "Error crítico: No se pudo obtener la URL del servicio 'salesforce-api-service'."
-        echo "Asegúrese de que el servicio de Salesforce esté desplegado antes de desplegar el agente."
         exit 1
       fi
       echo "URL de Salesforce API encontrada: $$SALESFORCE_URL"
