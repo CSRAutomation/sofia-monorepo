@@ -6,7 +6,6 @@ from twilio.base.exceptions import TwilioRestException
 import logging
 
 # Configurar logging
-
 app = Flask(__name__)
 
 # Cargar credenciales desde variables de entorno (inyectadas por Cloud Run)
