@@ -3,23 +3,17 @@ import sys
 from flask import Flask, request, jsonify
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
-from twilio.twiml.messaging_response import MessagingResponse
+from twilio.twiml.voice_response import VoiceResponse, Gather
 import logging
+import requests
 
 # Configurar logging
-# Se elimina logging.basicConfig() para que Gunicorn/Cloud Run lo manejen.
 app = Flask(__name__)
-
-# Cuando se ejecuta en producción con Gunicorn (como en Cloud Run),
-# es mejor usar el logger de Gunicorn para que los logs sean consistentes.
-if __name__ != '__main__':
-    gunicorn_logger = logging.getLogger('gunicorn.error')
-    app.logger.handlers = gunicorn_logger.handlers
-    app.logger.setLevel(gunicorn_logger.level)
 
 # Cargar credenciales desde variables de entorno (inyectadas por Cloud Run)
 ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+AGENT_API_URL = os.environ.get("AGENT_API_URL") # URL para comunicarse con el agente Sofía
 TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
 
 required_secrets = {
@@ -31,7 +25,7 @@ missing_secrets = [key for key, value in required_secrets.items() if not value]
 
 if missing_secrets:
     error_message = f"Error crítico: Faltan las siguientes variables de entorno de Twilio: {', '.join(missing_secrets)}"
-    app.logger.critical(error_message)
+    logging.critical(error_message)
     sys.exit(1)
 
 # --- Inicialización Singleton del Cliente de Twilio ---
@@ -43,40 +37,33 @@ def get_twilio_client():
     """
     global twilio_client
     if twilio_client is None:
-        app.logger.info("Inicializando cliente de Twilio...")
-        # La inicialización del cliente puede lanzar una excepción si las credenciales son inválidas.
-        twilio_client = Client(ACCOUNT_SID, AUTH_TOKEN)
-        app.logger.info("¡Cliente de Twilio inicializado con éxito!")
+        app.logger.info("Estableciendo nueva conexión con Twilio...")
+        try:
+            twilio_client = Client(ACCOUNT_SID, AUTH_TOKEN)
+            app.logger.info("¡Conexión con Twilio exitosa!")
+        except Exception as e:
+            app.logger.error(f"Error inesperado durante la conexión a Twilio: {e}")
+            raise
     return twilio_client
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Endpoint de verificación de estado para Cloud Run."""
-    return jsonify({"status": "ok"}), 200
-
-# FIX: Se corrige la ruta para que coincida con la que se está llamando ('/send/sms')
-# y así resolver el error 404 Not Found.
-@app.route('/send/sms', methods=['POST'])
+@app.route('/sms/send', methods=['POST'])
 def send_sms():
     # Obtener el cliente a través de la función singleton
     client = get_twilio_client()
 
     data = request.json
     to_number = data.get('to')
+    body = data.get('body')
 
-    if not to_number:
-        return jsonify({"status": "error", "message": "El campo 'to' es requerido."}), 400
-
-    # Se define un mensaje predeterminado para la prueba de comunicación.
-    # El cuerpo del mensaje ('body') ya no se necesita en la petición JSON.
-    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
+    if not all([to_number, body]):
+        return jsonify({"status": "error", "message": "Se requieren los campos 'to' y 'body'."}), 400
 
     try:
         message = client.messages.create(
             to=to_number,
             from_=TWILIO_PHONE_NUMBER,
-            body=test_message_body)
-        app.logger.info(f"SMS de prueba enviado con éxito. SID: {message.sid}")
+            body=body)
+        app.logger.info(f"SMS enviado con éxito. SID: {message.sid}")
         return jsonify({"status": "success", "sid": message.sid}), 200
     except TwilioRestException as e:
         # Captura errores específicos de la API de Twilio para dar una respuesta más útil.
@@ -87,28 +74,43 @@ def send_sms():
         app.logger.error(f"Error inesperado al enviar SMS: {e}")
         return jsonify({"status": "error", "message": "Ocurrió un error inesperado en el servidor."}), 500
 
-@app.route('/sms/receive', methods=['POST'])
-def receive_sms():
-    """
-    Endpoint para recibir mensajes SMS entrantes de Twilio (Webhook).
-    Responde automáticamente con un mensaje de prueba usando TwiML.
-    """
-    # Extraer el cuerpo del mensaje y el número del remitente
-    incoming_body = request.values.get('Body', None)
-    from_number = request.values.get('From', None)
+@app.route("/voice", methods=['POST'])
+def voice_webhook():
+    """Maneja las llamadas de voz entrantes y las respuestas del agente."""
+    twiml_response = VoiceResponse()
 
-    app.logger.info(f"Mensaje recibido de {from_number}: '{incoming_body}'")
+    # Obtener el texto transcrito de la voz del usuario, si existe.
+    user_speech = request.values.get('SpeechResult', None)
+    call_sid = request.values.get('CallSid') # Usar CallSid como session_id
 
-    # Crear una respuesta TwiML para enviar el mensaje de prueba de vuelta.
-    # Este es el método estándar y más eficiente para responder a un SMS.
-    response = MessagingResponse()
-    test_message_body = "Este es un mensaje de prueba desde la API de Sofia para verificar la comunicación."
-    response.message(test_message_body)
+    agent_text_response = ""
 
-    # Devolver la respuesta TwiML a Twilio. Twilio se encargará de enviar el SMS.
-    return str(response), 200, {'Content-Type': 'application/xml'}
+    # --- Bloque de prueba sin conectar al agente ---
+    # Este código responde con textos pre-programados para probar la generación de voz.
+    if user_speech:
+        app.logger.info(f"Usuario (CallSid: {call_sid}) dijo: '{user_speech}'")
+        # Respondemos con un texto que repite lo que dijo el usuario.
+        agent_text_response = f"Ha dicho: {user_speech}. Esta es una prueba de la generación de voz. Diga algo más para continuar la prueba."
+    else:
+        # Este es el primer turno de la llamada, el saludo inicial de prueba.
+        agent_text_response = "Hola. Esta es una prueba de la API de voz de Twilio. Por favor, diga algo después del tono."
+
+    # Usamos <Gather> para decir la respuesta del agente y luego escuchar al usuario.
+    # El verbo 'say' se anida dentro de 'gather'.
+    gather = Gather(input='speech', speechTimeout='auto', language='es-US', action='/voice')
+
+    # Usamos una voz Neural Premium (Polly.Mia-Neural) para un habla mucho más natural.
+    # El idioma 'es-MX' suele dar excelentes resultados para el español de América.
+    gather.say(agent_text_response, language='es-MX', voice='Polly.Mia-Neural')
+
+    twiml_response.append(gather)
+
+    # Si el usuario no dice nada después del timeout, la llamada se redirige aquí
+    # y el ciclo comienza de nuevo, lo que puede hacer que el agente repita la última pregunta.
+    twiml_response.redirect('/voice')
+
+    return str(twiml_response), 200, {'Content-Type': 'text/xml'}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    # El modo debug no debe usarse en producción. Es mejor controlarlo con una variable de entorno.
-    app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1"))
+    app.run(host="0.0.0.0", port=port, debug=True)
