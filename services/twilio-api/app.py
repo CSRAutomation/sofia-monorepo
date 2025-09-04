@@ -7,7 +7,15 @@ from twilio.twiml.messaging_response import MessagingResponse
 import logging
 
 # Configurar logging
+# Se elimina logging.basicConfig() para que Gunicorn/Cloud Run lo manejen.
 app = Flask(__name__)
+
+# Cuando se ejecuta en producción con Gunicorn (como en Cloud Run),
+# es mejor usar el logger de Gunicorn para que los logs sean consistentes.
+if __name__ != '__main__':
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
 
 # Cargar credenciales desde variables de entorno (inyectadas por Cloud Run)
 ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -23,7 +31,7 @@ missing_secrets = [key for key, value in required_secrets.items() if not value]
 
 if missing_secrets:
     error_message = f"Error crítico: Faltan las siguientes variables de entorno de Twilio: {', '.join(missing_secrets)}"
-    logging.critical(error_message)
+    app.logger.critical(error_message)
     sys.exit(1)
 
 # --- Inicialización Singleton del Cliente de Twilio ---
@@ -41,7 +49,14 @@ def get_twilio_client():
         app.logger.info("¡Cliente de Twilio inicializado con éxito!")
     return twilio_client
 
-@app.route('/sms/send', methods=['POST'])
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Endpoint de verificación de estado para Cloud Run."""
+    return jsonify({"status": "ok"}), 200
+
+# FIX: Se corrige la ruta para que coincida con la que se está llamando ('/send/sms')
+# y así resolver el error 404 Not Found.
+@app.route('/send/sms', methods=['POST'])
 def send_sms():
     # Obtener el cliente a través de la función singleton
     client = get_twilio_client()
