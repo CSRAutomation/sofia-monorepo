@@ -1,5 +1,32 @@
-__pycache__
+# Environments
+.venv/
+venv/
+ENV/
 .venv
 .env
+
+# Python cache & compiled files
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE configuration
+.vscode/
+.idea/
+
+# Test reports
+.pytest_cache/
+.coverage
+
+# Local config files
 *.cfg
+
+# OS-specific files
+.DS_Store
+Thumbs.db
