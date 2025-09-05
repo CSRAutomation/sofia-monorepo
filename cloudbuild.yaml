@@ -1,38 +1,64 @@
 steps:
-# --- PASO 1: Construir y Subir Imagen (Solo para servicios de Cloud Run) ---
-- name: 'gcr.io/cloud-builders/docker'
-  id: 'Build and Push Cloud Run Service'
+# 0. Crear el repositorio en Artifact Registry si no existe.
+# Esto hace que el pipeline sea idempotente y no requiera configuración manual.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
-    # Este bloque solo se ejecuta si NO es el despliegue del agente de Vertex AI.
-    if [ "$_SERVICE_NAME" != "agent-sofia" ]; then
-      echo "Construyendo imagen para el servicio de Cloud Run: ${_SERVICE_NAME}"
-      
-      # Crear repo en Artifact Registry si no existe.
-      gcloud artifacts repositories describe ${_SERVICE_NAME}-repo --location=us-central1 --quiet || \
-      gcloud artifacts repositories create ${_SERVICE_NAME}-repo --repository-format=docker --location=us-central1 --description="Repo para el servicio ${_SERVICE_NAME}"
+    gcloud artifacts repositories describe ${_SERVICE_NAME}-repo --location=us-central1 || \
+    gcloud artifacts repositories create ${_SERVICE_NAME}-repo --repository-format=docker --location=us-central1 --description="Repo para el servicio ${_SERVICE_NAME}"
 
-      # Construir la imagen de Docker.
-      docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest -f services/${_SERVICE_NAME}/Dockerfile .
-      
-      # Subir la imagen a Artifact Registry.
-      docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
+# 1. Construir la imagen de Docker para el servicio especificado.
+# El nombre del servicio se pasa a través de la variable de sustitución _SERVICE_NAME.
+# Se omite este paso para 'agent-sofia' ya que el ADK CLI se encarga de la construcción.
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    if [ "$_SERVICE_NAME" != "agent-sofia" ]; then
+      docker build \
+        -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+        -f services/${_SERVICE_NAME}/Dockerfile \
+        .
     else
-      echo "Omitiendo construcción de imagen. Se está desplegando el agente de Vertex AI."
+      echo "Paso de build omitido para agent-sofia; será manejado por ADK CLI."
     fi
 
-# --- PASO 2: Desplegar Servicio (Cloud Run o Agente de Vertex AI) ---
-- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  id: 'Deploy Service or Agent'
+# 2. Subir la imagen a Artifact Registry.
+# Se omite este paso para 'agent-sofia' ya que el ADK CLI se encarga de subir la imagen.
+- name: 'gcr.io/cloud-builders/docker'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
-    # Lógica para desplegar servicios de Cloud Run.
     if [ "$_SERVICE_NAME" != "agent-sofia" ]; then
-      echo "Desplegando servicio en Cloud Run: ${_SERVICE_NAME}"
+      docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
+    else
+      echo "Paso de push omitido para agent-sofia; será manejado por ADK CLI."
+    fi
+
+# 3. Desplegar la nueva imagen en Cloud Run.
+# El nombre del servicio de Cloud Run se construye a partir de _SERVICE_NAME.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
+      echo "Servicio agent-sofia detectado. Desplegando con ADK CLI."
+      # Se asume que 'adk' es un paquete de Python instalable vía pip.
+      pip install adk --quiet
+      # El ADK CLI se encarga de construir, subir y desplegar el agente.
+      # El acceso no autenticado se deniega por defecto, lo cual es el comportamiento deseado (--no-allow-unauthenticated).
+      adk deploy cloud_run \
+        --project=$PROJECT_ID \
+        --region=us-central1 \
+        --service_name=${_SERVICE_NAME}-service \
+        services/${_SERVICE_NAME}
+    else
+      echo "Desplegando servicio ${_SERVICE_NAME} con gcloud run deploy."
       DEPLOY_ARGS=""
       if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
         echo "Servicio salesforce-api detectado. Añadiendo secretos de Salesforce."
@@ -45,7 +71,6 @@ steps:
         DEPLOY_ARGS="--set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                      --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                      --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest"
-        # Obtenemos dinámicamente la URL del servicio del agente Sofía.
         AGENT_URL=$$(gcloud run services describe agent-sofia-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
         if [ -z "$$AGENT_URL" ]; then
           echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-service'."
@@ -63,21 +88,9 @@ steps:
         $$DEPLOY_ARGS
     fi
 
-# --- PASO 3: Desplegar Agente de Vertex AI (solo para 'agent-sofia') ---
-- name: 'python:3.9' # Usar una imagen oficial de Python.
-  id: 'Deploy Vertex AI Agent'
-  entrypoint: 'bash'
-  args:
-  - -c
-  - |
-    # Este bloque solo se ejecuta SI es el despliegue del agente.
-    if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
-      echo "Instalando dependencias para el despliegue del agente..."
-      pip install -r services/agent-sofia/requirements.txt
-      
-      echo "Ejecutando script de despliegue del agente de Vertex AI..."
-      python services/agent-sofia/deploy.py
-    fi
+# Especifica la imagen que se acaba de construir.
+images:
+- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

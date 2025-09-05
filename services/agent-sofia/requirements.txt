@@ -8,4 +8,5 @@ dateparser
 google-auth
 PyJWT
 cryptography
-uvicorn
+google-generativeai
+gunicorn
