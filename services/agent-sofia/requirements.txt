@@ -1,5 +1,11 @@
-google-cloud-adk
-google-generativeai
-typing-extensions
+google-cloud-aiplatform[adk,agent_engines]
+google-genai
+pydantic
+pytest-asyncio
+google-adk
+requests
 dateparser
-httpx
+google-auth
+PyJWT
+cryptography
+uvicorn
