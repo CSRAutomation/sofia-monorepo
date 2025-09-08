@@ -4,6 +4,7 @@ google-genai
 pydantic
 pytest-asyncio
 google-adk
+absl-py
 requests
 dateparser
 google-auth

@@ -13,7 +13,6 @@ MODEL = "gemini-2.0-flash"
 DESCRIPTION = "Sofia es una agente de servicio al cliente encargado de crear operaciones especificas en coordinacion con la plataformas Salesforce."
 
 
-
 sofia_agent = LlmAgent(
     name=NAME,
     model=MODEL,
