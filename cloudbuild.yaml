@@ -48,14 +48,27 @@ steps:
   - |
     if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
       echo "Servicio agent-sofia detectado. Desplegando con ADK CLI."
+
+      # Obtener dinámicamente la URL del servicio de la API de Salesforce.
+      echo "Obteniendo la URL del servicio salesforce-api-service..."
+      SALESFORCE_URL=$$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      if [ -z "$$SALESFORCE_URL" ]; then
+        echo "Error crítico: No se pudo obtener la URL del servicio 'salesforce-api-service'."
+        exit 1
+      fi
+      echo "URL de Salesforce API encontrada: $$SALESFORCE_URL"
+
       # Se asume que 'adk' es un paquete de Python instalable vía pip.
       pip install adk --quiet
       # El ADK CLI se encarga de construir, subir y desplegar el agente.
-      # El acceso no autenticado se deniega por defecto, lo cual es el comportamiento deseado (--no-allow-unauthenticated).
+      # Se permite el acceso no autenticado para que otros servicios (como twilio-api) puedan invocarlo.
+      # Se establecen variables de entorno para usar Vertex AI y para la URL de la API de Salesforce.
       adk deploy cloud_run \
         --project=$PROJECT_ID \
         --region=us-central1 \
         --service_name=${_SERVICE_NAME}-service \
+        --allow-unauthenticated \
+        --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL" \
         services/${_SERVICE_NAME}
     else
       echo "Desplegando servicio ${_SERVICE_NAME} con gcloud run deploy."
