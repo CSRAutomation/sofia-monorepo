@@ -11,33 +11,23 @@ steps:
 
 # 1. Construir la imagen de Docker para el servicio especificado.
 # El nombre del servicio se pasa a través de la variable de sustitución _SERVICE_NAME.
-# Se omite este paso para 'agent-sofia' ya que el ADK CLI se encarga de la construcción.
 - name: 'gcr.io/cloud-builders/docker'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
-    if [ "$_SERVICE_NAME" != "agent-sofia" ]; then
-      docker build \
-        -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
-        -f services/${_SERVICE_NAME}/Dockerfile \
-        .
-    else
-      echo "Paso de build omitido para agent-sofia; será manejado por ADK CLI."
-    fi
+    docker build \
+      -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      -f services/${_SERVICE_NAME}/Dockerfile \
+      .
 
 # 2. Subir la imagen a Artifact Registry.
-# Se omite este paso para 'agent-sofia' ya que el ADK CLI se encarga de subir la imagen.
 - name: 'gcr.io/cloud-builders/docker'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
-    if [ "$_SERVICE_NAME" != "agent-sofia" ]; then
-      docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
-    else
-      echo "Paso de push omitido para agent-sofia; será manejado por ADK CLI."
-    fi
+    docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
 
 # 3. Desplegar la nueva imagen en Cloud Run.
 # El nombre del servicio de Cloud Run se construye a partir de _SERVICE_NAME.
@@ -46,60 +36,46 @@ steps:
   args:
   - '-c'
   - |
-    if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
-      echo "Servicio agent-sofia detectado. Desplegando con ADK CLI."
+    echo "Desplegando servicio ${_SERVICE_NAME} con gcloud run deploy."
+    # Por defecto, los servicios son privados. Se sobreescribe para servicios públicos como el agente.
+    DEPLOY_ARGS="--no-allow-unauthenticated"
 
-      # Obtener dinámicamente la URL del servicio de la API de Salesforce.
-      echo "Obteniendo la URL del servicio salesforce-api-service..."
+    if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
+      echo "Servicio salesforce-api detectado. Añadiendo secretos de Salesforce."
+      DEPLOY_ARGS="$DEPLOY_ARGS --set-secrets=SF_USERNAME=sf-prod-username:latest \
+                   --set-secrets=SF_CONSUMER_KEY=sf-prod-consumer-key:latest \
+                   --set-secrets=SF_DOMAIN=sf-prod-domain:latest \
+                   --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
+    elif [ "$_SERVICE_NAME" == "twilio-api" ]; then
+      echo "Servicio twilio-api detectado. Añadiendo secretos y URL del agente."
+      AGENT_URL=$$(gcloud run services describe agent-sofia-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      if [ -z "$$AGENT_URL" ]; then
+        echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-service'."
+        exit 1
+      fi
+      echo "URL de Agent API encontrada: $$AGENT_URL"
+      DEPLOY_ARGS="$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
+                   --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
+                   --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest \
+                   --set-env-vars=AGENT_API_URL=$$AGENT_URL"
+    elif [ "$_SERVICE_NAME" == "agent-sofia" ]; then
+      echo "Servicio agent-sofia detectado. Añadiendo variables de entorno y URL de Salesforce."
       SALESFORCE_URL=$$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
       if [ -z "$$SALESFORCE_URL" ]; then
         echo "Error crítico: No se pudo obtener la URL del servicio 'salesforce-api-service'."
         exit 1
       fi
       echo "URL de Salesforce API encontrada: $$SALESFORCE_URL"
-
-      # Se asume que 'adk' es un paquete de Python instalable vía pip.
-      pip install adk --quiet
-      # El ADK CLI se encarga de construir, subir y desplegar el agente.
-      # Se permite el acceso no autenticado para que otros servicios (como twilio-api) puedan invocarlo.
-      # Se establecen variables de entorno para usar Vertex AI y para la URL de la API de Salesforce.
-      adk deploy cloud_run \
-        --project=$PROJECT_ID \
-        --region=us-central1 \
-        --service_name=${_SERVICE_NAME}-service \
-        --allow-unauthenticated \
-        --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL" \
-        services/${_SERVICE_NAME}
-    else
-      echo "Desplegando servicio ${_SERVICE_NAME} con gcloud run deploy."
-      DEPLOY_ARGS=""
-      if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
-        echo "Servicio salesforce-api detectado. Añadiendo secretos de Salesforce."
-        DEPLOY_ARGS="--set-secrets=SF_USERNAME=sf-prod-username:latest \
-                     --set-secrets=SF_CONSUMER_KEY=sf-prod-consumer-key:latest \
-                     --set-secrets=SF_DOMAIN=sf-prod-domain:latest \
-                     --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
-      elif [ "$_SERVICE_NAME" == "twilio-api" ]; then
-        echo "Servicio twilio-api detectado. Añadiendo secretos y URL del agente."
-        DEPLOY_ARGS="--set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
-                     --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
-                     --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest"
-        AGENT_URL=$$(gcloud run services describe agent-sofia-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
-        if [ -z "$$AGENT_URL" ]; then
-          echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-service'."
-          exit 1
-        fi
-        echo "URL de Agent API encontrada: $$AGENT_URL"
-        DEPLOY_ARGS="$$DEPLOY_ARGS --set-env-vars=AGENT_API_URL=$$AGENT_URL"
-      fi
-
-      gcloud run deploy ${_SERVICE_NAME}-service \
-        --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
-        --platform=managed \
-        --region=us-central1 \
-        --no-allow-unauthenticated \
-        $$DEPLOY_ARGS
+      # El agente necesita ser invocado por otros servicios (Twilio) y requiere variables para conectarse a Vertex y Salesforce.
+      DEPLOY_ARGS="--allow-unauthenticated \
+                   --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL"
     fi
+
+    gcloud run deploy ${_SERVICE_NAME}-service \
+      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      --platform=managed \
+      --region=us-central1 \
+      $DEPLOY_ARGS
 
 # Especifica la imagen que se acaba de construir.
 images:
