@@ -1,6 +1,8 @@
 import httpx
-import logging
 import os
+import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from typing import Any, Dict, List, Optional
 
 from google.adk.tools import BaseTool, FunctionTool, ToolContext
@@ -9,9 +11,14 @@ from google.adk.agents.readonly_context import ReadonlyContext
 
 from .states import State
 
-logger = logging.getLogger(__name__)
-API_BASE_URL = "https://salesforce-api-service-604477693185.us-central1.run.app"  # Carga desde variable de entorno
+root_dir = Path(__file__).parent.parent.parent
+dotenv_path = root_dir / ".env"
+load_dotenv(dotenv_path=dotenv_path)
 
+
+BASE_URL_SALESFORCE_API = os.environ.get("SALESFORCE_API_URL") # Carga desde variable de entorno
+
+logger = logging.getLogger(__name__)
 
 def find_contact_by_name(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
@@ -31,7 +38,7 @@ def find_contact_by_name(full_name: str, tool_context: ToolContext) -> Dict[str,
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{API_BASE_URL}/contact/find",
+                f"{BASE_URL_SALESFORCE_API}/contact/find",
                 json={"full_name": full_name},
                 timeout=10.0
             )
@@ -93,7 +100,7 @@ def create_contact(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
         with httpx.Client() as client:
             # La creación puede tardar por el Flow de Salesforce, se usa un timeout más largo.
             response = client.post(
-                f"{API_BASE_URL}/contact/create",
+                f"{BASE_URL_SALESFORCE_API}/contact/create",
                 json=payload,
                 timeout=20.0
             )
@@ -148,7 +155,7 @@ def verify_contact_by_dob(full_name: str, dob: str, tool_context: ToolContext) -
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{API_BASE_URL}/contact/verify/dob",
+                f"{BASE_URL_SALESFORCE_API}/contact/verify/dob",
                 json={"full_name": full_name, "dob": dob},
                 timeout=10.0
             )
@@ -204,7 +211,7 @@ def verify_contact_by_dob_phone(full_name: str, dob: str, phone: str, tool_conte
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{API_BASE_URL}/contact/verify/dob-phone",
+                f"{BASE_URL_SALESFORCE_API}/contact/verify/dob-phone",
                 json={"full_name": full_name, "dob": dob, "phone": phone},
                 timeout=10.0
             )
@@ -273,7 +280,7 @@ def create_customer_service(
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{API_BASE_URL}/customer_service/create",
+                f"{BASE_URL_SALESFORCE_API}/customer_service/create",
                 json=payload,
                 timeout=15.0
             )
