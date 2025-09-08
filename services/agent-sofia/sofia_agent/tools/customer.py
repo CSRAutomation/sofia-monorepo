@@ -7,7 +7,6 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.tools import BaseTool, FunctionTool, ToolContext
 from google.adk.tools.base_toolset import BaseToolset
 
-
 def extract_full_name(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
     Extrae y guarda el nombre completo del **cliente final**, la persona sobre la cual es la consulta.

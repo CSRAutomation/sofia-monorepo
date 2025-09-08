@@ -42,7 +42,7 @@ steps:
 
     if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
       echo "Servicio salesforce-api detectado. Añadiendo secretos de Salesforce."
-      DEPLOY_ARGS="$DEPLOY_ARGS --set-secrets=SF_USERNAME=sf-prod-username:latest \
+      DEPLOY_ARGS="$$DEPLOY_ARGS --set-secrets=SF_USERNAME=sf-prod-username:latest \
                    --set-secrets=SF_CONSUMER_KEY=sf-prod-consumer-key:latest \
                    --set-secrets=SF_DOMAIN=sf-prod-domain:latest \
                    --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
@@ -54,7 +54,7 @@ steps:
         exit 1
       fi
       echo "URL de Agent API encontrada: $$AGENT_URL"
-      DEPLOY_ARGS="$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
+      DEPLOY_ARGS="$$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                    --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                    --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest \
                    --set-env-vars=AGENT_API_URL=$$AGENT_URL"
@@ -75,7 +75,7 @@ steps:
       --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
       --platform=managed \
       --region=us-central1 \
-      $DEPLOY_ARGS
+      $$DEPLOY_ARGS
 
 # Especifica la imagen que se acaba de construir.
 images:
