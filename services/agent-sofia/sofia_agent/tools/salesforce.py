@@ -10,7 +10,6 @@ from google.adk.tools.base_toolset import BaseToolset
 from google.adk.agents.readonly_context import ReadonlyContext
 import google.auth
 import google.oauth2.id_token
-
 from .states import State
 
 root_dir = Path(__file__).parent.parent.parent

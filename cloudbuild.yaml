@@ -68,7 +68,7 @@ steps:
       echo "URL de Salesforce API encontrada: $$SALESFORCE_URL"
       # El agente necesita ser invocado por otros servicios (Twilio) y requiere variables para conectarse a Vertex y Salesforce.
       # Se despliega como privado (--no-allow-unauthenticated) y los permisos se gestionan con IAM.
-      DEPLOY_ARGS="--allow-unauthenticated --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL"
+      DEPLOY_ARGS="$$DEPLOY_ARGS --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL"
     fi
 
     gcloud run deploy ${_SERVICE_NAME}-service \
