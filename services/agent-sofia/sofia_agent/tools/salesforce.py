@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from google.adk.tools import BaseTool, FunctionTool, ToolContext
 from google.adk.tools.base_toolset import BaseToolset
 from google.adk.agents.readonly_context import ReadonlyContext
+import google.auth
+import google.oauth2.id_token
 
 from .states import State
 
@@ -19,6 +21,21 @@ load_dotenv(dotenv_path=dotenv_path)
 BASE_URL_SALESFORCE_API = os.environ.get("SALESFORCE_API_URL") # Carga desde variable de entorno
 
 logger = logging.getLogger(__name__)
+
+def _get_auth_token(audience: str) -> str:
+    """
+    Obtiene un token de ID de Google para autenticar peticiones a otros servicios de Cloud Run.
+    El 'audience' es la URL del servicio que se va a invocar.
+    """
+    if not audience:
+        raise ValueError("La URL del servicio (audience) no puede estar vacía para obtener un token.")
+    try:
+        auth_req = google.auth.transport.requests.Request()
+        token = google.oauth2.id_token.fetch_id_token(auth_req, audience)
+        return token
+    except Exception as e:
+        logger.error(f"No se pudo obtener el token de autenticación para la audiencia {audience}: {e}")
+        raise
 
 def find_contact_by_name(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
     """
@@ -36,10 +53,14 @@ def find_contact_by_name(full_name: str, tool_context: ToolContext) -> Dict[str,
 
     logger.info(f"Intentando encontrar contacto con el nombre: {full_name}")
     try:
+        auth_token = _get_auth_token(BASE_URL_SALESFORCE_API)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
         with httpx.Client() as client:
             response = client.post(
                 f"{BASE_URL_SALESFORCE_API}/contact/find",
                 json={"full_name": full_name},
+                headers=headers,
                 timeout=10.0
             )
             # Un 404 es un resultado de negocio válido (no encontrado), no un error del sistema.
@@ -97,11 +118,15 @@ def create_contact(full_name: str, tool_context: ToolContext) -> Dict[str, Any]:
 
     logger.info(f"Intentando crear contacto con payload: {payload}")
     try:
+        auth_token = _get_auth_token(BASE_URL_SALESFORCE_API)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
         with httpx.Client() as client:
             # La creación puede tardar por el Flow de Salesforce, se usa un timeout más largo.
             response = client.post(
                 f"{BASE_URL_SALESFORCE_API}/contact/create",
                 json=payload,
+                headers=headers,
                 timeout=20.0
             )
             response.raise_for_status()
@@ -153,10 +178,14 @@ def verify_contact_by_dob(full_name: str, dob: str, tool_context: ToolContext) -
     )
 
     try:
+        auth_token = _get_auth_token(BASE_URL_SALESFORCE_API)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
         with httpx.Client() as client:
             response = client.post(
                 f"{BASE_URL_SALESFORCE_API}/contact/verify/dob",
                 json={"full_name": full_name, "dob": dob},
+                headers=headers,
                 timeout=10.0
             )
             # Un 404 es un resultado de negocio válido (no verificado), no un error del sistema.
@@ -209,10 +238,14 @@ def verify_contact_by_dob_phone(full_name: str, dob: str, phone: str, tool_conte
     )
 
     try:
+        auth_token = _get_auth_token(BASE_URL_SALESFORCE_API)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
         with httpx.Client() as client:
             response = client.post(
                 f"{BASE_URL_SALESFORCE_API}/contact/verify/dob-phone",
                 json={"full_name": full_name, "dob": dob, "phone": phone},
+                headers=headers,
                 timeout=10.0
             )
             if response.status_code == 404:
@@ -278,10 +311,14 @@ def create_customer_service(
 
     logger.info(f"Intentando crear registro de servicio al cliente con payload: {payload}")
     try:
+        auth_token = _get_auth_token(BASE_URL_SALESFORCE_API)
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
         with httpx.Client() as client:
             response = client.post(
                 f"{BASE_URL_SALESFORCE_API}/customer_service/create",
                 json=payload,
+                headers=headers,
                 timeout=15.0
             )
             response.raise_for_status()
