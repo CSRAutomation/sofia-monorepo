@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from twilio.twiml.voice_response import VoiceResponse, Gather
+from twilio.twiml.messaging_response import MessagingResponse
 import logging
 import requests
 
@@ -14,12 +15,14 @@ app = Flask(__name__)
 ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 AGENT_API_URL = os.environ.get("AGENT_API_URL") # URL para comunicarse con el agente Sofía
+AGENT_APP_NAME = os.environ.get("AGENT_APP_NAME", "sofia_agent") # Nombre de la app del agente
 TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
 
 required_secrets = {
     "TWILIO_ACCOUNT_SID": ACCOUNT_SID,
     "TWILIO_AUTH_TOKEN": AUTH_TOKEN,
-    "TWILIO_PHONE_NUMBER": TWILIO_PHONE_NUMBER
+    "TWILIO_PHONE_NUMBER": TWILIO_PHONE_NUMBER,
+    "AGENT_API_URL": AGENT_API_URL
 }
 missing_secrets = [key for key, value in required_secrets.items() if not value]
 
@@ -46,33 +49,72 @@ def get_twilio_client():
             raise
     return twilio_client
 
-@app.route('/sms/send', methods=['POST'])
-def send_sms():
-    # Obtener el cliente a través de la función singleton
-    client = get_twilio_client()
 
-    data = request.json
-    to_number = data.get('to')
-    body = data.get('body')
+@app.route('/sms/receive', methods=['POST'])
+def receive_sms():
+    """
+    Recibe un SMS de Twilio, lo procesa con el agente y envía una respuesta.
+    """
+    # Extraer datos del webhook de Twilio
+    from_number = request.values.get('From', None)
+    message_body = request.values.get('Body', None)
+    app.logger.info(f"SMS recibido de {from_number}: '{message_body}'")
 
-    if not all([to_number, body]):
-        return jsonify({"status": "error", "message": "Se requieren los campos 'to' y 'body'."}), 400
+    if not from_number or not message_body:
+        app.logger.warning("Webhook de Twilio recibido sin 'From' o 'Body'.")
+        return str(MessagingResponse()), 200
+
+    # Usar el número de teléfono como ID de sesión y de usuario para mantener el contexto
+    session_id = from_number
+    user_id = from_number
+
+    # 1. Construir el payload para el agente (lógica de pruebas-agente-api.py)
+    payload = {
+        "app_name": AGENT_APP_NAME,
+        "user_id": user_id,
+        "session_id": session_id,
+        "new_message": {
+            "role": "user",
+            "parts": [{"text": message_body}]
+        }
+    }
+
+    agent_response_text = "Lo siento, no pude procesar tu solicitud en este momento." # Mensaje de error por defecto
 
     try:
-        message = client.messages.create(
-            to=to_number,
-            from_=TWILIO_PHONE_NUMBER,
-            body=body)
-        app.logger.info(f"SMS enviado con éxito. SID: {message.sid}")
-        return jsonify({"status": "success", "sid": message.sid}), 200
+        # 2. Enviar el mensaje al agente
+        agent_response = requests.post(AGENT_API_URL, json=payload, timeout=25)
+        agent_response.raise_for_status()
+        response_data = agent_response.json()
+
+        # 3. Extraer la respuesta de texto del agente
+        agent_messages = []
+        if isinstance(response_data, list):
+            for turn in response_data:
+                if 'content' in turn and 'parts' in turn['content']:
+                    for part in turn['content']['parts']:
+                        if 'text' in part and part.get('text'):
+                            agent_messages.append(part['text'])
+        
+        if agent_messages:
+            full_response = "".join(agent_messages).strip()
+            if full_response: # Asegurarse de que no esté vacío
+                agent_response_text = full_response
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error al conectar con el agente para la sesión {session_id}: {e}")
+    except (ValueError, KeyError) as e: # ValueError puede ser por json.JSONDecodeError
+        app.logger.error(f"Error al parsear la respuesta del agente para la sesión {session_id}: {e}")
+
+    try:
+        # 4. Enviar la respuesta del agente de vuelta al usuario vía SMS
+        client = get_twilio_client()
+        client.messages.create(to=from_number, from_=TWILIO_PHONE_NUMBER, body=agent_response_text)
+        app.logger.info(f"Respuesta enviada a {from_number}: '{agent_response_text}'")
     except TwilioRestException as e:
-        # Captura errores específicos de la API de Twilio para dar una respuesta más útil.
-        app.logger.error(f"Error de la API de Twilio: {e.msg} (Código: {e.code})")
-        return jsonify({"status": "error", "message": "Error de la API de Twilio.", "details": e.msg, "code": e.code}), 400
-    except Exception as e:
-        # Captura cualquier otro error inesperado.
-        app.logger.error(f"Error inesperado al enviar SMS: {e}")
-        return jsonify({"status": "error", "message": "Ocurrió un error inesperado en el servidor."}), 500
+        app.logger.error(f"Error de Twilio al enviar respuesta a {from_number}: {e.msg}")
+
+    return str(MessagingResponse()), 200
 
 @app.route("/voice", methods=['POST'])
 def voice_webhook():
