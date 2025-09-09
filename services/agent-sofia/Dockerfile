@@ -11,7 +11,6 @@ COPY requirements.txt .
 # La opción --no-cache-dir es una buena práctica para mantener la imagen ligera
 RUN pip install --no-cache-dir -r requirements.txt
 
-
 # Copia el resto del código de la aplicación
 COPY . .
 

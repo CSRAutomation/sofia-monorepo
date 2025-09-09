@@ -4,14 +4,14 @@ FROM python:3.11-slim
 # Establece el directorio de trabajo en /app
 WORKDIR /app
 
-# Copia el archivo de requerimientos del servicio específico.
-COPY services/twilio-api/requirements.txt requirements.txt
+# Copia el archivo de requerimientos
+COPY requirements.txt .
 
 # Instala las dependencias.
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia el código fuente del servicio al contenedor.
-COPY services/twilio-api/ .
+COPY . .
 
 # Expone el puerto en el que la aplicación se ejecutará.
 EXPOSE 8080
