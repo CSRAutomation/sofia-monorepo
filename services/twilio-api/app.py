@@ -8,6 +8,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 import logging
 import requests
 
+
 # Configurar logging
 app = Flask(__name__)
 

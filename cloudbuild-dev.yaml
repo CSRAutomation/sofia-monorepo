@@ -57,7 +57,7 @@ steps:
       DEPLOY_ARGS="$$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                    --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                    --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest \
-                   --set-env-vars=AGENT_API_URL=$$AGENT_URL, AGENT_APP_NAME=sofia_agent"
+                   --set-env-vars=AGENT_API_URL=$$AGENT_URL,AGENT_APP_NAME=sofia_agent"
     elif [ "$_SERVICE_NAME" == "agent-sofia" ]; then
       echo "Servicio agent-sofia detectado. Añadiendo variables de entorno y URL de Salesforce."
       SALESFORCE_URL=$$(gcloud run services describe salesforce-api-dev-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
