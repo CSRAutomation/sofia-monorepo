@@ -4,6 +4,7 @@ FROM python:3.12-slim
 
 # Establecer variables de entorno para Python que mejoran el rendimiento en contenedores.
 ENV PYTHONDONTWRITEBYTECODE 1
+
 ENV PYTHONUNBUFFERED 1
 # Añadir la raíz del proyecto al PYTHONPATH para permitir importaciones desde libs/
 ENV PYTHONPATH /app

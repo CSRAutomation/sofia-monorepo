@@ -16,5 +16,6 @@ COPY services/twilio-api/ .
 # Expone el puerto en el que la aplicación se ejecutará.
 EXPOSE 8080
 
+
 # Comando para ejecutar la aplicación usando Gunicorn.
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
