@@ -19,7 +19,7 @@ steps:
     docker build \
       -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
       -f services/${_SERVICE_NAME}/Dockerfile \
-      .
+      services/${_SERVICE_NAME}
 
 # 2. Subir la imagen a Artifact Registry.
 - name: 'gcr.io/cloud-builders/docker'

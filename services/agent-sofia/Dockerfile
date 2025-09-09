@@ -18,6 +18,7 @@ COPY . .
 # Expone el puerto 8080 para que Cloud Run pueda conectarse
 EXPOSE 8080
 
+
 # Comando para ejecutar la aplicación cuando el contenedor se inicie
 # Usa Gunicorn, un servidor de producción robusto que ya tienes en tus dependencias
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
