@@ -174,34 +174,86 @@ def voice_webhook():
     """Maneja las llamadas de voz entrantes y las respuestas del agente."""
     twiml_response = VoiceResponse()
 
-    # Obtener el texto transcrito de la voz del usuario, si existe.
-    user_speech = request.values.get('SpeechResult', None)
-    call_sid = request.values.get('CallSid') # Usar CallSid como session_id
+    # Extraer datos del webhook de Twilio. Usar "" como default para el primer turno.
+    user_speech = request.values.get('SpeechResult', "")
+    call_sid = request.values.get('CallSid')
+    from_number = request.values.get('From')
+
+    # Validar que tengamos los identificadores necesarios para la sesión.
+    if not call_sid or not from_number:
+        app.logger.error("Webhook de voz recibido sin CallSid o From.")
+        twiml_response.say(
+            "Lo siento, ha ocurrido un error de sistema. Por favor, intente llamar de nuevo más tarde.",
+            language='es-MX', voice='Polly.Mia-Neural'
+        )
+        twiml_response.hangup()
+        return str(twiml_response), 200, {'Content-Type': 'text/xml'}
+
+    # Usar CallSid como ID de sesión y el número del llamante como ID de usuario.
+    session_id = call_sid
+    user_id = from_number
+    app.logger.info(f"Llamada (SID: {session_id}) de {user_id}. Transcripción: '{user_speech}'")
+
+    # --- Creación/Verificación de Sesión con el Agente ---
+    try:
+        ensure_agent_session_exists(user_id, session_id)
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error crítico al crear/verificar la sesión de voz '{session_id}': {e}")
+        twiml_response.say(
+            "Lo siento, estamos teniendo problemas para iniciar la conversación. Por favor, intente llamar de nuevo en unos minutos.",
+            language='es-MX', voice='Polly.Mia-Neural'
+        )
+        twiml_response.hangup()
+        return str(twiml_response), 200, {'Content-Type': 'text/xml'}
+
+    # --- Interacción con el Agente ---
+    # 1. Construir el payload para el agente. Un user_speech vacío iniciará la conversación.
+    payload = {
+        "app_name": AGENT_APP_NAME,
+        "user_id": user_id,
+        "session_id": session_id,
+        "new_message": {
+            "role": "user",
+            "parts": [{"text": user_speech}]
+        }
+    }
 
     agent_text_response = ""
+    try:
+        # 2. Enviar el mensaje al agente y procesar la respuesta.
+        agent_api_response = requests.post(f"{AGENT_API_URL}/run", json=payload, timeout=25)
+        agent_api_response.raise_for_status()
+        response_data = agent_api_response.json()
 
-    # --- Bloque de prueba sin conectar al agente ---
-    # Este código responde con textos pre-programados para probar la generación de voz.
-    if user_speech:
-        app.logger.info(f"Usuario (CallSid: {call_sid}) dijo: '{user_speech}'")
-        # Respondemos con un texto que repite lo que dijo el usuario.
-        agent_text_response = f"Ha dicho: {user_speech}. Esta es una prueba de la generación de voz. Diga algo más para continuar la prueba."
-    else:
-        # Este es el primer turno de la llamada, el saludo inicial de prueba.
-        agent_text_response = "Hola. Esta es una prueba de la API de voz de Twilio. Por favor, diga algo después del tono."
+        # 3. Extraer la respuesta de texto del agente.
+        agent_messages = []
+        if isinstance(response_data, list):
+            for turn in response_data:
+                if 'content' in turn and 'parts' in turn['content']:
+                    for part in turn['content']['parts']:
+                        if 'text' in part and part.get('text'):
+                            agent_messages.append(part['text'])
+        
+        if agent_messages:
+            # Para voz, unimos todas las partes en una sola respuesta.
+            agent_text_response = "".join(agent_messages).strip()
 
-    # Usamos <Gather> para decir la respuesta del agente y luego escuchar al usuario.
-    # El verbo 'say' se anida dentro de 'gather'.
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+        app.logger.error(f"Error procesando la respuesta del agente para la llamada {session_id}: {e}")
+        # El mensaje de fallback se usará si agent_text_response permanece vacío.
+        pass
+
+    # 4. Si no se pudo obtener una respuesta del agente, usar un mensaje por defecto.
+    if not agent_text_response:
+        agent_text_response = "Lo siento, no pude procesar su solicitud en este momento. ¿Podría repetirlo, por favor?"
+
+    app.logger.info(f"Respuesta del agente para la llamada {session_id}: '{agent_text_response}'")
+
+    # --- Generación de TwiML para la Respuesta ---
     gather = Gather(input='speech', speechTimeout='auto', language='es-US', action='/voice')
-
-    # Usamos una voz Neural Premium (Polly.Mia-Neural) para un habla mucho más natural.
-    # El idioma 'es-MX' suele dar excelentes resultados para el español de América.
     gather.say(agent_text_response, language='es-MX', voice='Polly.Mia-Neural')
-
     twiml_response.append(gather)
 
-    # Si el usuario no dice nada después del timeout, la llamada se redirige aquí
-    # y el ciclo comienza de nuevo, lo que puede hacer que el agente repita la última pregunta.
     twiml_response.redirect('/voice')
 
     return str(twiml_response), 200, {'Content-Type': 'text/xml'}
