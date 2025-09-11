@@ -1,175 +1,125 @@
- # Documentación Técnica: Agente de IA "Sofia"
- 
- Este documento describe la arquitectura y funcionalidades del **Agente Sofia**, un servicio de inteligencia artificial conversacional. Su finalidad principal es **mejorar e innovar la atención al servicio al cliente**, proporcionando respuestas rápidas, precisas y contextuales.
- 
- ## 1. Descripción General del Agente
- 
- El Agente Sofia es una aplicación construida sobre el framework `FastAPI` y el **Agent Development Kit (ADK)** de Google, diseñada para ser desplegada como un servicio web contenedorizado en Google Cloud Run.
- 
- Utiliza un modelo de lenguaje grande (LLM) de Google (Gemini) para comprender las solicitudes de los usuarios, mantener conversaciones fluidas y ejecutar tareas específicas a través de herramientas externas. El objetivo es automatizar consultas comunes y resolver problemas de manera eficiente.
- 
- ## 2. Estructura del Proyecto
- 
- El proyecto sigue la estructura estándar definida por el ADK:
- 
- ```
- /agent-sofia/
- ├── agent/
- │   ├── agent.yaml      # Configuración principal del agente (prompt, herramientas, modelo).
- │   └── tools/
- │       └── tool_script.py # Implementación de las herramientas en Python.
- ├── main.py             # Punto de entrada de la aplicación FastAPI.
- ├── Dockerfile          # Instrucciones para construir la imagen del contenedor.
- ├── requirements.txt    # Dependencias de Python.
- └── .env                # (Opcional) Variables de entorno locales.
- ```
- 
- ## 3. Configuración del Agente (`agent/agent.yaml`)
- 
- Este archivo es el cerebro del agente. Define su comportamiento, capacidades y las herramientas que puede utilizar.
- 
- -   **`instructions`**: Define el **prompt del sistema**. Es el conjunto de directivas que establecen la personalidad de Sofia, su tono amable y servicial, las tareas que puede realizar y las reglas que debe seguir para interactuar con los clientes.
- -   **`model`**: Especifica el modelo de lenguaje a utilizar (ej. `gemini-2.0-flash`).
- -   **`tools`**: Lista las herramientas que el agente tiene a su disposición. Cada entrada se corresponde con una función de Python definida en el directorio `tools/`.
- 
- ## 4. Herramientas (`agent/tools/`)
- 
- Las herramientas son funciones de Python que le otorgan a Sofia capacidades para interactuar con sistemas externos y realizar acciones concretas. Esto le permite ir más allá de una simple conversación y resolver problemas reales de los clientes.
- 
- ### Funciones Implementadas y Logros:
- 
- -   **`consultar_estado_pedido(id_pedido: str)`**:
-     -   **¿Qué hace?**: Se conecta al sistema de gestión de pedidos para obtener el estado actual de un pedido específico.
-     -   **¿Qué logramos?**: Permite a los clientes auto-servirse para conocer el estado de su compra en tiempo real (ej. "en preparación", "enviado", "entregado"), reduciendo el volumen de llamadas y tickets para el equipo de soporte.
- 
- -   **`buscar_producto(nombre_producto: str)`**:
-     -   **¿Qué hace?**: Realiza una búsqueda en el catálogo de productos de la empresa.
-     -   **¿Qué logramos?**: Ayuda a los clientes a encontrar productos, verificar disponibilidad o recibir recomendaciones, mejorando la experiencia de compra y potenciando las ventas.
- 
- -   **`registrar_caso_soporte(descripcion_problema: str, email_cliente: str)`**:
-     -   **¿Qué hace?**: Crea un nuevo ticket de soporte en el sistema de CRM (ej. Zendesk, Salesforce) con la descripción del problema proporcionada por el cliente.
-     -   **¿Qué logramos?**: Agiliza el proceso de creación de casos de soporte. El agente recopila la información inicial y la registra formalmente, asegurando que ningún caso se pierda y que el equipo humano reciba la información estructurada.
- 
- ## 5. Punto de Entrada de la Aplicación (`main.py`)
- 
- El archivo `main.py` es el componente central que **convierte a nuestro agente en una aplicación web funcional**. Actúa como el servidor donde se despliega el agente, utilizando el framework FastAPI.
- 
- La función clave `get_fast_api_app` del ADK toma toda la configuración de Sofia (definida en `agent.yaml` y `tools/`) y la expone a través de puntos de conexión (endpoints) de una API RESTful.
- 
- Al hacer esto, **heredamos la misma definición de rutas que se usará tanto para la interfaz de usuario de desarrollo como para la integración con Vertex AI**. Esto significa que el mismo agente puede ser probado localmente y desplegado en producción sin cambiar su lógica, garantizando consistencia y agilizando el ciclo de vida del desarrollo.
- 
- ```python
- import os
- import uvicorn
- from dotenv import load_dotenv 
- from fastapi import FastAPI
- from google.adk.cli.fast_api import get_fast_api_app
- from google.cloud import logging as google_cloud_logging
- 
- # Carga variables de entorno desde un archivo .env
- load_dotenv()
- 
- # Configura el cliente de logging para Google Cloud
- logging_client = google_cloud_logging.Client()
- logger = logging_client.logger(__name__)
- 
- # Define el directorio donde se encuentra la configuración del agente
- AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
- 
- # Obtiene la URI del servicio de sesión desde las variables de entorno
- session_uri = os.getenv("SESSION_SERVICE_URI", None)
- 
- # Prepara los argumentos para la creación de la app del agente
- app_args = {"agents_dir": AGENT_DIR, "web": True}
- 
- # Si se proporciona una URI de sesión, la añade a los argumentos.
- # Esto es crucial para tener sesiones persistentes (ej. usando Memorystore/Redis).
- if session_uri:
-     app_args["session_service_uri"] = session_uri
- else:
-     # Si no, advierte que las sesiones se perderán al reiniciar el servidor.
-     logger.log_text(
-         "SESSION_SERVICE_URI not provided. Using in-memory session service instead. "
-         "All sessions will be lost when the server restarts.",
-         severity="WARNING",
-     )
- 
- # Crea la aplicación FastAPI usando la función del ADK
- app: FastAPI = get_fast_api_app(**app_args)
- 
- app.title = "agente-sofia"
- 
- # Ejecuta el servidor Uvicorn
- if __name__ == "__main__":
-     # El puerto se obtiene de la variable de entorno PORT, estándar en Cloud Run.
-     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", 8080)))
- ```
- 
- ### Puntos Clave de `main.py`:
- 1.  **`get_fast_api_app`**: Es la función principal del ADK que construye la aplicación FastAPI, cargando la configuración del agente desde `AGENT_DIR`.
- 2.  **Gestión de Sesiones**: El manejo de `SESSION_SERVICE_URI` es vital. Sin esta variable, el agente usará una memoria de sesión volátil. Para producción, se debe configurar un servicio de sesión persistente (como Redis) y pasar su URI a través de esta variable.
- 3.  **Logging**: Utiliza el cliente de logging de Google Cloud, lo que permite que los logs se integren automáticamente con Cloud Logging cuando se despliega en GCP.
- 4.  **Puerto**: El servidor se ejecuta en el puerto definido por la variable de entorno `PORT`, que es la forma en que Cloud Run asigna un puerto al contenedor.
- 
- ## 6. Contenedorización (`Dockerfile`)
- 
- El `Dockerfile` define los pasos para empaquetar la aplicación en una imagen de contenedor portable y reproducible.
- 
- ```dockerfile
- # 1. Usar una imagen base oficial de Python
- FROM python:3.12-slim
- 
- # 2. Establecer el directorio de trabajo dentro del contenedor
- WORKDIR /app
- 
- # 3. Copiar el archivo de dependencias
- COPY requirements.txt .
- 
- # 4. Instalar las dependencias
- RUN pip install --no-cache-dir -r requirements.txt
- 
- # 5. Copiar todo el código de la aplicación
- COPY . .
- 
- # 6. Exponer el puerto que Cloud Run usará para enviar tráfico
- EXPOSE 8080
- 
- # 7. Comando para ejecutar la aplicación al iniciar el contenedor
- # Se usa la variable de entorno $PORT que Cloud Run provee dinámicamente.
- CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
- ```
- 
- ## 7. Despliegue en Google Cloud
- 
- El despliegue se realiza en dos pasos principales: construir la imagen del contenedor y desplegarla en Cloud Run.
- 
- ### Paso 1: Construir y Subir la Imagen a Artifact Registry
- 
- Este comando utiliza Cloud Build para construir la imagen Docker a partir del `Dockerfile` en el directorio actual y la etiqueta (`tag`) para subirla al repositorio de Artifact Registry especificado.
- 
- ```bash
- gcloud builds submit --tag us-central1-docker.pkg.dev/vertex-466215/agent-sofia-repo/agent-sofia:latest .
- ```
- 
- ### Paso 2: Desplegar el Contenedor en Cloud Run
- 
- Este comando despliega la imagen previamente subida como un nuevo servicio en Cloud Run.
- 
- ```bash
- gcloud run deploy agent-sofia \
-   --image=us-central1-docker.pkg.dev/vertex-466215/agent-sofia-repo/agent-sofia:latest \
-   --platform=managed \
-   --region=us-central1 \
-   --allow-unauthenticated \
-   --set-env-vars="GOOGLE_CLOUD_PROJECT=vertex-466215,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True"
- ```
- 
- ### Análisis de los Parámetros de Despliegue:
- -   `--image`: Especifica la URL completa de la imagen de contenedor a desplegar.
- -   `--platform=managed`: Indica que se usará la plataforma de Cloud Run totalmente gestionada por Google.
- -   `--region`: La región de GCP donde se desplegará el servicio.
- -   `--allow-unauthenticated`: Permite que el servicio sea invocado públicamente sin autenticación de IAM. **Nota:** Para servicios privados, este flag debe omitirse.
- -   `--set-env-vars`: Establece las variables de entorno para el servicio en ejecución:
-     -   `GOOGLE_CLOUD_PROJECT`: ID del proyecto de GCP.
-     -   `GOOGLE_CLOUD_LOCATION`: Región por defecto para los servicios de GCP.
-     -   `GOOGLE_GENAI_USE_VERTEXAI=True`: Indica al SDK de GenAI que utilice los endpoints y la autenticación de Vertex AI.
+# Agente Sofía - Documentación Técnica
+
+Este documento proporciona una descripción técnica detallada del microservicio `agent-sofia`, el cerebro del proyecto agente de inteligencia aritificial para atencion al cliente.
+
+---
+
+## 1. Finalidad y Objetivos del Proyecto
+
+El **Agente Sofía** es un asistente de inteligencia artificial conversacional diseñado para automatizar y mejorar la experiencia de servicio al cliente de **FrancisTaxService**.
+
+### Objetivos Clave:
+
+-   **Atención Autónoma:** Gestionar interacciones con clientes de principio a fin sin intervención humana para tareas comunes.
+-   **Gestión de Datos en Salesforce:** Actuar como una interfaz de lenguaje natural para Salesforce, permitiendo:
+    -   Buscar contactos existentes.
+    -   Verificar la identidad de los clientes de forma segura.
+    -   Crear nuevos contactos cuando sea necesario.
+    -   Registrar cada interacción como un caso de servicio (`Customer_Service__c`).
+-   **Experiencia de Usuario Natural:** Mantener una conversación fluida, amable y profesional, haciendo que el cliente se sienta escuchado y bien atendido.
+-   **Inteligencia de Contexto:** Diferenciar entre un cliente que llama por sí mismo y un representante que llama en nombre de un cliente, adaptando el flujo de la conversación.
+
+---
+
+## 2. Arquitectura del Servicio
+
+`agent-sofia` es una aplicación **FastAPI** en donde envolvemos el servicio de IA de**Google Agent Development Kit (ADK)**. Funciona como un microservicio dentro de la arquitectura general y es responsable de toda la lógica conversacional.
+
+### Interacciones con otros Servicios:
+
+-   **Invocado por:** `twilio-api`. Este servicio actúa como puerta de enlace para los canales de comunicación (SMS, Voz, Chat-Web, WhatsApp) y reenvía los mensajes del usuario al agente.
+-   **Invoca a:** `salesforce-api`. Cuando el agente necesita interactuar con Salesforce (para buscar un contacto, verificarlo o crear un registro), realiza llamadas HTTP a los endpoints expuestos por el servicio `salesforce-api`.
+
+### Configuración y Variables de Entorno
+
+El comportamiento del servicio se configura a través de variables de entorno, que son inyectadas por Cloud Run durante el despliegue.
+
+-   `GOOGLE_CLOUD_PROJECT`: ID del proyecto de Google Cloud, necesario para la integración con servicios de GCP como Vertex AI.
+-   `GOOGLE_CLOUD_LOCATION`: Región de GCP donde operan los servicios.
+-   `GOOGLE_GENAI_USE_VERTEXAI`: Indica al ADK que utilice los modelos de Vertex AI para la generación de respuestas.
+-   `SALESFORCE_API_URL`: La URL del servicio `salesforce-api` para que el agente pueda realizar las llamadas a su API.
+-   `PORT`: El puerto en el que se ejecuta el servidor web (proporcionado por Cloud Run, por defecto `8080`).
+
+---
+
+## 3. Lógica Central: El Prompt del Sistema
+
+El "cerebro" y la personalidad de Sofía están definidos en un único y detallado prompt de sistema ubicado en `sofia_agent/prompts.py`. Este prompt instruye al modelo de lenguaje sobre cómo comportarse, qué herramientas usar y cómo seguir flujos de trabajo específicos.
+
+### Componentes Clave del Prompt:
+
+1.  **Persona:** Define a Sofía como una representante de servicio al cliente amable, profesional y natural. Establece reglas como el uso del pronombre "usted".
+2.  **Misión Principal:** Guía al agente en su objetivo: identificar al usuario, verificar su identidad y registrar la interacción.
+3.  **Flujo de Trabajo Lógico:** Es la sección más crítica. Define una máquina de estados conversacional basada en condiciones (`{{{State.Some.VALUE}}}`).
+    -   **Identificación Inicial (Casos A, B, C, D):** Detalla cómo reaccionar si el usuario da un nombre completo, un nombre parcial, se identifica como representante o no se identifica.
+    -   **Verificación de Identidad:** Especifica el proceso de solicitar la fecha de nacimiento (DOB) y, si falla, un número de teléfono como método alternativo.
+    -   **Manejo de Cliente No Encontrado:** Define cómo proceder si el contacto no existe en Salesforce, ofreciendo crear una nueva cuenta.
+    -   **Creación de Registro de Servicio:** Una vez verificado el cliente, detalla los pasos para recopilar la información necesaria y crear el registro `Customer_Service__c`.
+4.  **Guía de Conversación:** Ofrece ejemplos de diálogos para inspirar el tono y estilo del agente, pero enfatiza que **no es un guion estricto**, promoviendo la adaptabilidad.
+5.  **Reglas Globales:** Impone reglas críticas de comportamiento, como no revelar que es una IA, justificar la solicitud de datos y narrar siempre las acciones antes de ejecutarlas.
+
+---
+
+## 4. Integración de Herramientas (Tools)
+
+El agente utiliza "herramientas" (tools) para realizar acciones en el mundo real. Estas herramientas son funciones que el modelo de IA decide llamar en función de la conversación. En este proyecto, las herramientas son llamadas a la API de `salesforce-api`.
+
+El prompt define cuándo usar herramientas como:
+-   `salesforce_find_contact_by_name`: Para buscar un contacto.
+-   `salesforce_verify_contact_by_dob`: Para verificar la identidad.
+-   `salesforce_create_contact`: Para crear un nuevo cliente.
+-   `salesforce_create_customer_service`: Para registrar la interacción.
+
+La implementación de estas herramientas se encuentra en los archivos de `tools` dentro del directorio del agente, y su lógica consiste principalmente en realizar una petición `requests` al servicio `salesforce-api`.
+
+---
+
+## 5. Desarrollo Local
+
+Para ejecutar el agente en un entorno local:
+
+1.  **Crear un entorno virtual e instalar dependencias:**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # En Windows: venv\Scripts\activate
+    pip install -r services/agent-sofia/requirements.txt
+    ```
+
+2.  **Configurar variables de entorno:**
+    Crea un archivo `.env` en el directorio `services/agent-sofia/` con el siguiente contenido. Asegúrate de que el servicio `salesforce-api` se esté ejecutando localmente y su URL sea correcta.
+    ```env
+    # services/agent-sofia/.env
+
+    GOOGLE_CLOUD_PROJECT="tu-gcp-project-id"
+    GOOGLE_CLOUD_LOCATION="us-central1"
+    GOOGLE_GENAI_USE_VERTEXAI="True"
+    SALESFORCE_API_URL="http://127.0.0.1:8081" # URL local del servicio salesforce-api
+    ```
+
+3.  **Ejecutar el servidor:**
+    Desde la raíz del monorepo, ejecuta:
+    ```bash
+    uvicorn services.agent-sofia.main:app --reload --port 8080
+    ```
+    El servidor estará disponible en `http://127.0.0.1:8080`.
+
+---
+
+## 6. Despliegue
+
+El servicio `agent-sofia` está diseñado para ser desplegado en **Cloud Run**.
+
+### Despliegue en Entorno de Desarrollo/Pruebas
+
+Para desplegar manualmente los cambios de tu rama actual al entorno de desarrollo, utiliza el script `cloudbuild-dev.yaml`. Este script se encarga de construir la imagen, publicarla en Artifact Registry y desplegarla en Cloud Run con la configuración de desarrollo (ej. `agent-sofia-dev-service`).
+
+Ejecuta el siguiente comando desde la raíz del monorepo:
+```bash
+gcloud builds submit --config cloudbuild-dev.yaml --substitutions=_SERVICE_NAME=agent-sofia
+```
+
+**Nota Importante:** El agente se despliega como un servicio público (`--allow-unauthenticated`) porque necesita ser invocado por el servicio `twilio-api`, que a su vez es invocado por webhooks externos de Twilio.
+
+### Despliegue en Producción
+
+El despliegue a producción es automático. Cuando los cambios se fusionan (merge) a la rama `main`, un disparador de Cloud Build se activa, utilizando el archivo `cloudbuild.yaml` para desplegar la versión de producción (`agent-sofia-service`).
