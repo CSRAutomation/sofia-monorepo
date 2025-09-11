@@ -17,4 +17,5 @@ COPY . .
 EXPOSE 8080
 
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
+# Usamos una variable de entorno WORKERS, con un valor por defecto de 4 si no se especifica.
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers ${WORKERS:-4}"]

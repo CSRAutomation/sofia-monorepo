@@ -24,4 +24,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Comando para ejecutar la aplicación usando Gunicorn, el servidor WSGI.
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "app:app"]
+# app:app: Le dice a Gunicorn que cargue el objeto 'app' desde el archivo 'app.py'.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT --workers ${WORKERS:-4} --threads 8 --timeout 120 app:app"]

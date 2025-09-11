@@ -38,5 +38,8 @@ app: FastAPI = get_fast_api_app(**app_args)
 app.title = "agente-sofia"
 
 if __name__ == "__main__":
-    # Use the PORT environment variable provided by Cloud Run, defaulting to 8080
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", 8080)))
+    # Use environment variables for configuration, with sensible defaults.
+    port = int(os.environ.get("PORT", 8080))
+    # The number of worker processes. A good starting rule is (2 x $num_cores) + 1.
+    workers = int(os.environ.get("WORKERS", 1))
+    uvicorn.run(app, host="0.0.0.0", port=port, workers=workers)
