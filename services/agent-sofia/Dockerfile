@@ -16,6 +16,6 @@ COPY . .
 # Expone el puerto 8080 para que Cloud Run pueda conectarse
 EXPOSE 8080
 
-
-# Usamos una variable de entorno WORKERS, con un valor por defecto de 4 si no se especifica.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers ${WORKERS:-4}"]
+# Comando para iniciar la aplicación con Gunicorn, el servidor WSGI recomendado para producción.
+# Gunicorn gestionará los workers de Uvicorn para un rendimiento y estabilidad óptimos.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT --workers ${WORKERS:-4} --threads 8 --timeout 120 app:app"]
