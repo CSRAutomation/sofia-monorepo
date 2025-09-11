@@ -18,4 +18,4 @@ EXPOSE 8080
 
 
 # Usamos una variable de entorno WORKERS, con un valor por defecto de 4 si no se especifica.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers ${WORKERS:-4}"]
+CMD ["sh", "-c", "uvicorn --host 0.0.0.0 --port $PORT --workers ${WORKERS:-4} --threads 8 --timeout 120 main:app"]

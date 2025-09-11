@@ -548,9 +548,6 @@ def create_script_case():
 
 
 if __name__ == "__main__":
-    # Este bloque es solo para desarrollo local.
-    # En producción (Cloud Run), se usará un servidor WSGI como Gunicorn.
-    # La conexión a Salesforce se establecerá de forma 'lazy' en la primera petición,
-    # no durante el arranque.
+   
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)

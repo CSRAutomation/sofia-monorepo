@@ -40,6 +40,4 @@ app.title = "agente-sofia"
 if __name__ == "__main__":
     # Use environment variables for configuration, with sensible defaults.
     port = int(os.environ.get("PORT", 8080))
-    # The number of worker processes. A good starting rule is (2 x $num_cores) + 1.
-    workers = int(os.environ.get("WORKERS", 1))
-    uvicorn.run(app, host="0.0.0.0", port=port, workers=workers)
+    uvicorn.run(app, host="0.0.0.0", port=port)
