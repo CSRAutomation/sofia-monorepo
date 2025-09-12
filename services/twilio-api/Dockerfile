@@ -16,6 +16,7 @@ COPY . .
 # Expone el puerto en el que la aplicación se ejecutará.
 EXPOSE 8080
 
+
 # Comando para ejecutar la aplicación usando Gunicorn.
 # Usamos Gunicorn, un servidor WSGI de nivel de producción, para ejecutar la aplicación Flask.
 # --bind 0.0.0.0:$PORT: Escucha en todas las interfaces de red en el puerto que Cloud Run asigna.
