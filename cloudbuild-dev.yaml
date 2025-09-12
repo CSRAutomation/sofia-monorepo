@@ -76,6 +76,7 @@ steps:
       --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-dev-repo/${_SERVICE_NAME}:latest \
       --platform=managed \
       --region=us-central1 \
+      --min-instances=1 \
       $$DEPLOY_ARGS
 
 # 4. Configurar permisos de servicio a servicio (IAM).
