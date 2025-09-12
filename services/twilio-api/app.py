@@ -219,10 +219,12 @@ def voice_webhook():
     }
 
     agent_text_response = ""
+    should_hangup = False # Flag para determinar si la llamada debe terminarse.
+
     try:
         # 2. Enviar el mensaje al agente y procesar la respuesta.
         agent_api_response = requests.post(f"{AGENT_API_URL}/run", json=payload, timeout=25)
-        agent_api_response.raise_for_status()
+        agent_api_response.raise_for_status() # Lanza HTTPError para 4xx/5xx
         response_data = agent_api_response.json()
 
         # 3. Extraer la respuesta de texto del agente.
@@ -237,24 +239,54 @@ def voice_webhook():
         if agent_messages:
             # Para voz, unimos todas las partes en una sola respuesta.
             agent_text_response = "".join(agent_messages).strip()
+        else:
+            # El agente respondió, pero sin texto.
+            app.logger.warning(f"El agente respondió sin contenido de texto para la llamada {session_id}.")
+            agent_text_response = "No he entendido lo que ha dicho. ¿Podría repetirlo, por favor?"
 
-    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
-        app.logger.error(f"Error procesando la respuesta del agente para la llamada {session_id}: {e}")
-        # El mensaje de fallback se usará si agent_text_response permanece vacío.
-        pass
+    except requests.exceptions.ConnectionError as e:
+        app.logger.error(f"Error de conexión con el agente para la llamada {session_id}: {e}")
+        agent_text_response = "No es posible conectarnos con el agente en este momento. El servicio parece no estar en ejecución. Por favor, intente de nuevo en unos minutos."
+        should_hangup = True
 
-    # 4. Si no se pudo obtener una respuesta del agente, usar un mensaje por defecto.
+    except requests.exceptions.Timeout as e:
+        app.logger.error(f"Timeout al conectar con el agente para la llamada {session_id}: {e}")
+        agent_text_response = "Nuestro sistema está tardando más de lo normal en responder. ¿Podría repetir su consulta, por favor?"
+
+    except requests.exceptions.HTTPError as e:
+        app.logger.error(f"Error HTTP del agente para la llamada {session_id}: {e}")
+        agent_text_response = "Hemos encontrado un error interno en nuestro sistema. Nuestro equipo técnico ya ha sido notificado. Por favor, intente llamar de nuevo más tarde."
+        should_hangup = True
+
+    except (ValueError, KeyError) as e:
+        # Error al decodificar JSON o al acceder a una clave esperada.
+        app.logger.error(f"Error de formato en la respuesta del agente para la llamada {session_id}: {e}")
+        agent_text_response = "Hemos recibido una respuesta con un formato inesperado. ¿Podría intentar su consulta de nuevo?"
+
+    except requests.exceptions.RequestException as e:
+        # Captura cualquier otra excepción de la librería requests.
+        app.logger.error(f"Error de red inesperado con el agente para la llamada {session_id}: {e}")
+        agent_text_response = "Se ha producido un error de comunicación de red. Por favor, intente de nuevo."
+        should_hangup = True
+
+    # Fallback final si, por alguna razón, la respuesta sigue vacía.
     if not agent_text_response:
         agent_text_response = "Lo siento, no pude procesar su solicitud en este momento. ¿Podría repetirlo, por favor?"
 
     app.logger.info(f"Respuesta del agente para la llamada {session_id}: '{agent_text_response}'")
 
     # --- Generación de TwiML para la Respuesta ---
-    gather = Gather(input='speech', speechTimeout='auto', language='es-US', action='/voice')
-    gather.say(agent_text_response, language='es-MX', voice='Polly.Mia-Neural')
-    twiml_response.append(gather)
+    # Si debemos colgar, solo decimos el mensaje y colgamos.
+    if should_hangup:
+        twiml_response.say(agent_text_response, language='es-MX', voice='Polly.Mia-Neural')
+        twiml_response.hangup()
+    else:
+        # Si no, continuamos la conversación con Gather.
+        gather = Gather(input='speech', speechTimeout='auto', language='es-US', action='/voice')
+        gather.say(agent_text_response, language='es-MX', voice='Polly.Mia-Neural')
+        twiml_response.append(gather)
 
-    twiml_response.redirect('/voice')
+        twiml_response.redirect('/voice')
 
     return str(twiml_response), 200, {'Content-Type': 'text/xml'}
 
