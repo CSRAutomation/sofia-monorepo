@@ -17,7 +17,7 @@ steps:
   - '-c'
   - |
     docker build \
-      -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:$SHORT_SHA \
       -f services/${_SERVICE_NAME}/Dockerfile \
       services/${_SERVICE_NAME}
 
@@ -27,7 +27,7 @@ steps:
   args:
   - '-c'
   - |
-    docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
+    docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:$SHORT_SHA
 
 # 3. Desplegar la nueva imagen en Cloud Run.
 # El nombre del servicio de Cloud Run se construye a partir de _SERVICE_NAME.
@@ -57,7 +57,7 @@ steps:
       DEPLOY_ARGS="$$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                    --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                    --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest \
-                   --set-env-vars=AGENT_API_URL=$$AGENT_URL"
+                    --set-env-vars=AGENT_API_URL=$$AGENT_URL,AGENT_APP_NAME=sofia_agent"
     elif [ "$_SERVICE_NAME" == "agent-sofia" ]; then
       echo "Servicio agent-sofia detectado. Añadiendo variables de entorno y URL de Salesforce."
       SALESFORCE_URL=$$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
@@ -73,7 +73,7 @@ steps:
     fi
 
     gcloud run deploy ${_SERVICE_NAME}-service \
-      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:$SHORT_SHA \
       --platform=managed \
       --region=us-central1 \
       --min-instances=1 \
@@ -97,16 +97,16 @@ steps:
       gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
     fi
 
-    # # El servicio 'agent-sofia' debe ser invocado por 'twilio-api'.
-    # # Esta regla se aplica cuando se despliega el servicio 'agent-sofia'.
-    # if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
-    #   echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'agent-sofia-service'..."
-    #   gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
-    # fi
+    # El servicio 'agent-sofia' debe ser invocado por 'twilio-api'.
+    # Esta regla se aplica cuando se despliega el servicio 'agent-sofia'.
+    if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
+      echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'agent-sofia-service'..."
+      gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
+    fi
 
 # Especifica la imagen que se acaba de construir.
 images:
-- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest'
+- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:$SHORT_SHA'
 
 options:
   logging: CLOUD_LOGGING_ONLY
