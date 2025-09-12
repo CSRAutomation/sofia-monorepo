@@ -6,5 +6,5 @@ python-dotenv
 google-cloud-logging
 dateparser
 google-auth
-uvicorn
+gunicorn==23.0.0
 fastapi

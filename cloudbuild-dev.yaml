@@ -6,8 +6,8 @@ steps:
   args:
   - '-c'
   - |
-    gcloud artifacts repositories describe ${_SERVICE_NAME}-repo --location=us-central1 || \
-    gcloud artifacts repositories create ${_SERVICE_NAME}-repo --repository-format=docker --location=us-central1 --description="Repo para el servicio ${_SERVICE_NAME}"
+    gcloud artifacts repositories describe ${_SERVICE_NAME}-dev-repo --location=us-central1 || \
+    gcloud artifacts repositories create ${_SERVICE_NAME}-dev-repo --repository-format=docker --location=us-central1 --description="Repo para el servicio ${_SERVICE_NAME}"
 
 # 1. Construir la imagen de Docker para el servicio especificado.
 # El nombre del servicio se pasa a través de la variable de sustitución _SERVICE_NAME.
@@ -17,7 +17,7 @@ steps:
   - '-c'
   - |
     docker build \
-      -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+      -t us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-dev-repo/${_SERVICE_NAME}:latest \
       -f services/${_SERVICE_NAME}/Dockerfile \
       services/${_SERVICE_NAME}
 
@@ -27,7 +27,7 @@ steps:
   args:
   - '-c'
   - |
-    docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest
+    docker push us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-dev-repo/${_SERVICE_NAME}:latest
 
 # 3. Desplegar la nueva imagen en Cloud Run.
 # El nombre del servicio de Cloud Run se construye a partir de _SERVICE_NAME.
@@ -48,21 +48,21 @@ steps:
                    --set-secrets=SF_PRIVATE_KEY_CONTENT=sf-prod-private-key:latest"
     elif [ "$_SERVICE_NAME" == "twilio-api" ]; then
       echo "Servicio twilio-api detectado. Añadiendo secretos y URL del agente."
-      AGENT_URL=$$(gcloud run services describe agent-sofia-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      AGENT_URL=$$(gcloud run services describe agent-sofia-dev-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
       if [ -z "$$AGENT_URL" ]; then
-        echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-service'."
+        echo "Error crítico: No se pudo obtener la URL del servicio 'agent-sofia-dev-service'."
         exit 1
       fi
       echo "URL de Agent API encontrada: $$AGENT_URL"
       DEPLOY_ARGS="$$DEPLOY_ARGS --set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest \
                    --set-secrets=TWILIO_AUTH_TOKEN=twilio-auth-token:latest \
                    --set-secrets=TWILIO_PHONE_NUMBER=twilio-phone-number:latest \
-                   --set-env-vars=AGENT_API_URL=$$AGENT_URL"
+                   --set-env-vars=AGENT_API_URL=$$AGENT_URL,AGENT_APP_NAME=sofia_agent"
     elif [ "$_SERVICE_NAME" == "agent-sofia" ]; then
       echo "Servicio agent-sofia detectado. Añadiendo variables de entorno y URL de Salesforce."
-      SALESFORCE_URL=$$(gcloud run services describe salesforce-api-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
+      SALESFORCE_URL=$$(gcloud run services describe salesforce-api-dev-service --platform managed --region us-central1 --format 'value(status.url)' 2>/dev/null)
       if [ -z "$$SALESFORCE_URL" ]; then
-        echo "Error crítico: No se pudo obtener la URL del servicio 'salesforce-api-service'."
+        echo "Error crítico: No se pudo obtener la URL del servicio 'salesforce-api-dev-service'."
         exit 1
       fi
       echo "URL de Salesforce API encontrada: $$SALESFORCE_URL"
@@ -72,10 +72,11 @@ steps:
                    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,GOOGLE_GENAI_USE_VERTEXAI=True,SALESFORCE_API_URL=$$SALESFORCE_URL"
     fi
 
-    gcloud run deploy ${_SERVICE_NAME}-service \
-      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest \
+    gcloud run deploy ${_SERVICE_NAME}-dev-service \
+      --image=us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-dev-repo/${_SERVICE_NAME}:latest \
       --platform=managed \
       --region=us-central1 \
+      --min-instances=1 \
       $$DEPLOY_ARGS
 
 # 4. Configurar permisos de servicio a servicio (IAM).
@@ -92,20 +93,20 @@ steps:
     # El servicio 'salesforce-api' debe ser invocado por 'agent-sofia'.
     # Esta regla se aplica cuando se despliega el servicio 'salesforce-api'.
     if [ "$_SERVICE_NAME" == "salesforce-api" ]; then
-      echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'salesforce-api-service'..."
-      gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
+      echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'salesforce-api-dev-service'..."
+      gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-dev-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
     fi
 
     # # El servicio 'agent-sofia' debe ser invocado por 'twilio-api'.
     # # Esta regla se aplica cuando se despliega el servicio 'agent-sofia'.
     # if [ "$_SERVICE_NAME" == "agent-sofia" ]; then
-    #   echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'agent-sofia-service'..."
-    #   gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
+    #   echo "Otorgando permiso a la cuenta de servicio por defecto para invocar 'agent-sofia-dev-service'..."
+    #   gcloud run services add-iam-policy-binding ${_SERVICE_NAME}-dev-service --member=$$CALLER_SERVICE_ACCOUNT --role=roles/run.invoker --region=us-central1 --platform=managed
     # fi
 
 # Especifica la imagen que se acaba de construir.
 images:
-- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-repo/${_SERVICE_NAME}:latest'
+- 'us-central1-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}-dev-repo/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

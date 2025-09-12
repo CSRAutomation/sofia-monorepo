@@ -93,4 +93,3 @@ gcloud builds submit --config cloudbuild.yaml --substitutions=_SERVICE_NAME=<nom
 
 ---
 
-¡Listo! Con esta estructura, estamos preparados para construir de forma ordenada y escalable. El siguiente paso es configurar los disparadores en Cloud Build. ¡Vamos a ello!
